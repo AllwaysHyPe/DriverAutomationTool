@@ -4,6 +4,9 @@ IMPORTANT
 - DAT Downloads have been moved to GitHub - https://github.com/maurice-daly/DriverAutomationTool
 - Latest build EXEs available from - https://github.com/maurice-daly/DriverAutomationTool/tree/master/Current%20Branch
 
+Version 8.0.0
+Added support for Windows 11 25H2 for Acer, Dell, HP and Lenovo OEMs
+
 Version 7.2.5
 Added support for Windows 11 24H2 - Stop gap while 8.0 release is due
 

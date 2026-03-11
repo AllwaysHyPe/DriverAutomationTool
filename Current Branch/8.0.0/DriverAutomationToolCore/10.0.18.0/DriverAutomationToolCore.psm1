@@ -887,10 +887,10 @@ function Get-DATOEMDownloadLinks {
 					
 					# OS matching format
 					switch -wildcard ($OS) {
-						"Windows 11" {
+						"Windows 11*" {
 							$WindowsVersion = "Windows11"
 						}
-						"Windows 10" {
+						"Windows 10*" {
 							$WindowsVersion = "Windows10"
 						}
 					}
@@ -952,10 +952,10 @@ function Get-DATOEMDownloadLinks {
 					
 					# OS matching format
 					switch -wildcard ($OS) {
-						"Windows 11" {
+						"Windows 11*" {
 							$WindowsVersion = "Windows11"
 						}
-						"Windows 10" {
+						"Windows 10*" {
 							$WindowsVersion = "Windows10"
 						}
 					}

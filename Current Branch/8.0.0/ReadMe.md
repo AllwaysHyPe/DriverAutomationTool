@@ -9,7 +9,7 @@ The new Driver Automation Tool has a redesigned UI which is designed to be easie
 Current Functionality<br>
 ✅ Current OEM Support: Acer, Dell, HP, Lenovo<BR>
 ✅ Package Type Support: Drivers<BR>
-✅ Supported Operating Systems: Windows 11 Only<BR>
+✅ Supported Operating Systems: Windows 11 Only (EXE UI); any version via PowerShell wrapper<BR>
 ✅ Supported Architectures : x64, x86<BR>
 
 In Progress Functionality <BR>
@@ -20,14 +20,19 @@ In Progress Functionality <BR>
 🚧 Custom driver package UI<BR>
 🚧 Signed EXE and MSI<BR>
 
-Note: The PowerShell module should be copied to C:\Program Files\WindowsPowerShell\Modules prior to running the EXE. 
+> **Full prerequisites, essential file list, network requirements, and step-by-step setup:**
+> See **[PREREQUISITES.md](PREREQUISITES.md)**
 
-Manual installation instructions (MSI to come)
+### Quick-start (manual install)
 
-1. Copy the DriverAutomationCore module to C:\Program Files\WindowsPowerShell\Modules
-2. Create a folder and copy the DriverAutomationTool.exe to that folder, suggestion is C:\Program Files\MSEndpointMgr\Driver Automation Tool, as this will be used for temp, log files, and settings
-3. Create a subfolder called Tools and download / place the latest version of CURL from [https://curl.se/download.html, CURL.SE](https://curl.se/windows/) 
-4. Run the DriverAutomationTool.exe
+1. Copy the `DriverAutomationToolCore` module folder to `C:\Program Files\WindowsPowerShell\Modules\DriverAutomationToolCore`
+2. Create `C:\Program Files\MSEndpointMgr\Driver Automation Tool\` and copy `DriverAutomationTool.exe` there
+3. Create a `Tools` subfolder and place `curl.exe` inside it (download from [curl.se/windows](https://curl.se/windows/))
+4. Run `DriverAutomationTool.exe` as Administrator
+
+**Packaging Lenovo Windows 11 25H2 drivers (or any version the EXE UI does not expose):**
+Use `Invoke-DATWin1125H2.ps1` — a PowerShell wrapper that calls the core module directly.
+See [PREREQUISITES.md](PREREQUISITES.md) for full usage instructions.
 
 
 ### New UI

@@ -227,7 +227,7 @@ param (
 	[parameter(Mandatory = $true, ParameterSetName = "Debug")]
 	[parameter(Mandatory = $false, ParameterSetName = "XMLPackage")]
 	[ValidateNotNullOrEmpty()]
-	[ValidateSet("2004", "1909", "1903", "1809", "1803", "1709", "1703", "1607")]
+	[ValidateSet("25H2", "24H2", "23H2", "22H2", "2004", "1909", "1903", "1809", "1803", "1709", "1703", "1607")]
 	[string]$TargetOSVersion,
 
 	[parameter(Mandatory = $false, ParameterSetName = "BareMetal", HelpMessage = "Define the value that will be used as the target operating system architecture e.g. 'x64'.")]
@@ -842,14 +842,14 @@ Process {
 			"DriverUpdate" {
 				$OSImageDetails = [PSCustomObject]@{
 					Architecture = Get-OSArchitecture -InputObject (Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandProperty OSArchitecture)
-					Name = "Windows 10"
+					Name = Get-OSName -InputObject (Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandProperty Version)
 					Version = Get-OSBuild -InputObject (Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandProperty Version)
 				}
 			}
 			default {
 				$OSImageDetails = [PSCustomObject]@{
 					Architecture = $Script:TargetOSArchitecture
-					Name = "Windows 10"
+					Name = if ($Script:TargetOSVersion -match "^\d{2}H\d") { "Windows 11" } else { "Windows 10" }
 					Version = $Script:TargetOSVersion
 				}
 			}
@@ -871,6 +871,33 @@ Process {
 			[string]$InputObject
 		)
 		switch (([System.Version]$InputObject).Build) {
+			"27842" {
+				$OSVersion = "25H2"
+			}
+			"26100" {
+				$OSVersion = "24H2"
+			}
+			"22631" {
+				$OSVersion = "23H2"
+			}
+			"22621" {
+				$OSVersion = "22H2"
+			}
+			"22000" {
+				$OSVersion = "21H2"
+			}
+			"19045" {
+				$OSVersion = "22H2"
+			}
+			"19044" {
+				$OSVersion = "21H2"
+			}
+			"19043" {
+				$OSVersion = "21H1"
+			}
+			"19042" {
+				$OSVersion = "20H2"
+			}
 			"19041" {
 				$OSVersion = 2004
 			}
@@ -907,6 +934,22 @@ Process {
 
 		# Handle return value from function
 		return $OSVersion
+	}
+
+	function Get-OSName {
+		param (
+			[parameter(Mandatory = $true, HelpMessage = "OS version data to be translated to an OS name.")]
+			[ValidateNotNullOrEmpty()]
+			[string]$InputObject
+		)
+		switch (([System.Version]$InputObject).Build) {
+			{ $_ -ge 22000 } {
+				return "Windows 11"
+			}
+			default {
+				return "Windows 10"
+			}
+		}
 	}
 	
 	function Get-OSArchitecture {
@@ -1231,12 +1274,12 @@ Process {
 			}
 
 			# Add driver package OS name details to custom driver package details object
-			if ($DriverPackageItem.Name -match "^.*Windows.*(?<OSName>(10)).*") {
-				$DriverPackageDetails.OSName = -join@("Windows ", $Matches.OSName)
+			if ($DriverPackageItem.Name -match "^.*(?<OSName>Windows (10|11)).*") {
+				$DriverPackageDetails.OSName = $Matches.OSName
 			}
 
 			# Add driver package OS version details to custom driver package details object
-			if ($DriverPackageItem.Name -match "^.*Windows.*(?<OSVersion>(\d){4}).*") {
+			if ($DriverPackageItem.Name -match "^.*Windows.*(?<OSVersion>(\d{2}H\d|\d{4})).*") {
 				$DriverPackageDetails.OSVersion = $Matches.OSVersion
 			}
 
@@ -1380,8 +1423,8 @@ Process {
 						}
 
 						# Add driver package OS name details to custom driver package details object
-						if ($DriverPackageItem.PackageName -match "^.*Windows.*(?<OSName>(10)).*") {
-							$DriverPackageDetails.OSName = -join@("Windows ", $Matches.OSName)
+						if ($DriverPackageItem.PackageName -match "^.*(?<OSName>Windows (10|11)).*") {
+							$DriverPackageDetails.OSName = $Matches.OSName
 						}
 
 						# Set counters for logging output of how many matching checks was successfull
@@ -1447,8 +1490,19 @@ Process {
 			[ValidateNotNullOrEmpty()]
 			[bool]$OSVersionFallback = $false			
 		)
+
+		# Map version strings to ordinal values so Windows 10 and Windows 11 codename
+		# versions (e.g. "25H2", "24H2") can be compared with numeric versions (e.g. "2004").
+		$OSVersionOrdinals = @{
+			"1607" = 1;  "1703" = 2;  "1709" = 3;  "1803" = 4;  "1809" = 5
+			"1903" = 6;  "1909" = 7;  "2004" = 8;  "20H2" = 9;  "21H1" = 10
+			"21H2" = 11; "22H2" = 12; "23H2" = 13; "24H2" = 14; "25H2" = 15
+		}
+
 		if ($OSVersionFallback -eq $true) {
-			if ([int]$DriverPackageInput -lt [int]$OSImageData.Version) {
+			$InputOrdinal  = if ($OSVersionOrdinals.ContainsKey($DriverPackageInput))      { $OSVersionOrdinals[$DriverPackageInput] }      else { [int]$DriverPackageInput }
+			$TargetOrdinal = if ($OSVersionOrdinals.ContainsKey($OSImageData.Version)) { $OSVersionOrdinals[$OSImageData.Version] } else { [int]$OSImageData.Version }
+			if ($InputOrdinal -lt $TargetOrdinal) {
 				# OS version match found where driver package input was less than input from OSImageData version
 				Write-CMLogEntry -Value " - Matched operating system version: $($DriverPackageInput)" -Severity 1
 				return $true
@@ -1469,7 +1523,7 @@ Process {
 				return $false
 			}
 		}
-	}	
+	}
 
 	function Confirm-Architecture {
 		param(

@@ -76,25 +76,30 @@ Write-Verbose -Message "Script directory is $global:ScriptDirectory"
 [string]$global:LogDirectory = Join-Path -Path $global:ScriptDirectory -ChildPath "Logs"
 [string]$global:ToolsDirectory = Join-Path -Path $global:ScriptDirectory -ChildPath "Tools"
 
-# Windows build number lookup table - maps OS version codename to full build number string
-$global:WindowsBuildHashTable = @{
-	'25H2'       = "10.0.27842.1"
-	'24H2'       = "10.0.26100.1"
-	'23H2'       = "10.0.22631.1"
-	'22H2'       = "10.0.22621.1"
-	'Win11-25H2' = "10.0.27842.1"
-	'Win11-24H2' = "10.0.26100.1"
-	'Win11-23H2' = "10.0.22631.1"
-	'Win11-22H2' = "10.0.22621.1"
-	'Win11-21H2' = "10.0.22000.1"
-	'Win10-22H2' = "10.0.19045.1"
-	'Win10-21H2' = "10.0.19044.1"
-	'Win10-21H1' = "10.0.19043.1"
-	'Win10-20H2' = "10.0.19042.1"
-	'Win10-2004' = "10.0.19041.1"
-	'Win10-1909' = "10.0.18363.1"
-	'Win10-1903' = "10.0.18362.1"
-	'Win10-1809' = "10.0.17763.1"
+# WindowsBuildHashTable is used by the Microsoft Surface OEM code path to map version
+# codenames (e.g. "25H2") to full build number strings for catalog matching.
+# It is populated dynamically from the local Windows registry so it automatically
+# reflects the currently-running OS version with no hardcoded entries.
+# For cross-version packaging of Microsoft Surface drivers, add additional entries
+# to this table after import:  $global:WindowsBuildHashTable['25H2'] = "10.0.27842.1"
+$global:WindowsBuildHashTable = @{}
+try {
+	$_RegBase     = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+	$_Version     = (Get-ItemProperty -Path $_RegBase -Name CurrentVersion       -ErrorAction SilentlyContinue).CurrentVersion
+	$_Build       = (Get-ItemProperty -Path $_RegBase -Name CurrentBuildNumber   -ErrorAction SilentlyContinue).CurrentBuildNumber
+	$_DisplayVer  = (Get-ItemProperty -Path $_RegBase -Name DisplayVersion       -ErrorAction SilentlyContinue).DisplayVersion
+	$_ReleaseId   = (Get-ItemProperty -Path $_RegBase -Name ReleaseId            -ErrorAction SilentlyContinue).ReleaseId
+	$_Key         = if (-not [string]::IsNullOrEmpty($_DisplayVer)) { $_DisplayVer } else { $_ReleaseId }
+	if ((-not [string]::IsNullOrEmpty($_Key)) -and (-not [string]::IsNullOrEmpty($_Version)) -and (-not [string]::IsNullOrEmpty($_Build))) {
+		$_BuildString = "$_Version.$_Build.1"
+		# Plain key (e.g. "25H2") is used by the Surface catalog lookup at line Get-DATOEMModelInfo/Microsoft.
+		# "Win11-<key>" mirrors the legacy key format also used by some Surface catalog queries.
+		$global:WindowsBuildHashTable[$_Key]         = $_BuildString
+		$global:WindowsBuildHashTable["Win11-$_Key"] = $_BuildString
+	}
+	Remove-Variable _RegBase, _Version, _Build, _DisplayVer, _ReleaseId, _Key, _BuildString -ErrorAction SilentlyContinue
+} catch {
+	Write-Verbose "WindowsBuildHashTable: could not read OS version from registry - table will be empty."
 }
 
 #endregion Variables
@@ -447,7 +452,6 @@ function Get-DATOEMModelInfo {
 		[array]$RequiredOEMs,
 		[Parameter(Position = 2)]
 		[ValidateNotNullOrEmpty()]
-		[ValidateSet('Windows 11 25H2', 'Windows 11 24H2', 'Windows 11 23H2', 'Windows 11 22H2', 'Windows 11', 'Windows 10 22H2')]
 		[string]$OS,
 		[Parameter(Position = 3)]
 		[ValidateSet('x64', 'x86', 'Arm64')]
@@ -853,7 +857,6 @@ function Get-DATOEMDownloadLinks {
 		[ValidateSet('HP', 'Dell', 'Lenovo', 'Microsoft', 'Acer')]
 		[array]$OEM,
 		[Parameter(Position = 2)]
-		[ValidateSet('Windows 11 25H2', 'Windows 11 24H2', 'Windows 11 23H2', 'Windows 11 22H2', 'Windows 11', 'Windows 10 22H2')]
 		[ValidateNotNullOrEmpty()]
 		[string]$OS,
 		[Parameter(Position = 3)]
@@ -1529,11 +1532,9 @@ function Install-DATDriverPackage {
 	param
 	(
 		[Parameter(Mandatory = $true)]
-		[ValidateSet('Windows 10', 'Windows 11')]
 		[ValidateNotNullOrEmpty()]
 		[String]$TargetOS,
 		[Parameter(Mandatory = $true)]
-		[ValidateSet('22H2', '23H2', '24H2', '25H2')]
 		[ValidateNotNullOrEmpty()]
 		[String]$TargetOSBuild,
 		[Parameter(Mandatory = $true)]

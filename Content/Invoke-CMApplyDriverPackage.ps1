@@ -221,14 +221,21 @@ param (
 	[ValidateNotNullOrEmpty()]
 	[string]$Filter = "Drivers",
 
-	[parameter(Mandatory = $true, ParameterSetName = "BareMetal", HelpMessage = "Define the value that will be used as the target operating system version e.g. '2004'.")]
+	[parameter(Mandatory = $true, ParameterSetName = "BareMetal", HelpMessage = "Define the value that will be used as the target operating system version e.g. '25H2', '24H2', '2004'.")]
 	[parameter(Mandatory = $true, ParameterSetName = "OSUpgrade")]
 	[parameter(Mandatory = $true, ParameterSetName = "PreCache")]
 	[parameter(Mandatory = $true, ParameterSetName = "Debug")]
 	[parameter(Mandatory = $false, ParameterSetName = "XMLPackage")]
 	[ValidateNotNullOrEmpty()]
-	[ValidateSet("25H2", "24H2", "23H2", "22H2", "2004", "1909", "1903", "1809", "1803", "1709", "1703", "1607")]
 	[string]$TargetOSVersion,
+
+	[parameter(Mandatory = $false, ParameterSetName = "BareMetal", HelpMessage = "Define the target operating system name, either 'Windows 10' or 'Windows 11'. When omitted the script auto-detects from the OS version string.")]
+	[parameter(Mandatory = $false, ParameterSetName = "OSUpgrade")]
+	[parameter(Mandatory = $false, ParameterSetName = "PreCache")]
+	[parameter(Mandatory = $false, ParameterSetName = "Debug")]
+	[parameter(Mandatory = $false, ParameterSetName = "XMLPackage")]
+	[ValidateSet("Windows 10", "Windows 11")]
+	[string]$TargetOSName,
 
 	[parameter(Mandatory = $false, ParameterSetName = "BareMetal", HelpMessage = "Define the value that will be used as the target operating system architecture e.g. 'x64'.")]
 	[parameter(Mandatory = $false, ParameterSetName = "OSUpgrade")]
@@ -842,14 +849,14 @@ Process {
 			"DriverUpdate" {
 				$OSImageDetails = [PSCustomObject]@{
 					Architecture = Get-OSArchitecture -InputObject (Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandProperty OSArchitecture)
-					Name = Get-OSName -InputObject (Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandProperty Version)
-					Version = Get-OSBuild -InputObject (Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandProperty Version)
+					Name = Get-OSName
+					Version = Get-OSBuild
 				}
 			}
 			default {
 				$OSImageDetails = [PSCustomObject]@{
 					Architecture = $Script:TargetOSArchitecture
-					Name = if ($Script:TargetOSVersion -match "^\d{2}H\d") { "Windows 11" } else { "Windows 10" }
+					Name = Resolve-OSName -TargetOSVersion $Script:TargetOSVersion -TargetOSName $Script:TargetOSName
 					Version = $Script:TargetOSVersion
 				}
 			}
@@ -865,93 +872,77 @@ Process {
 	}
 
 	function Get-OSBuild {
-		param (
-			[parameter(Mandatory = $true, HelpMessage = "OS version data to be translated.")]
-			[ValidateNotNullOrEmpty()]
-			[string]$InputObject
-		)
-		switch (([System.Version]$InputObject).Build) {
-			"27842" {
-				$OSVersion = "25H2"
-			}
-			"26100" {
-				$OSVersion = "24H2"
-			}
-			"22631" {
-				$OSVersion = "23H2"
-			}
-			"22621" {
-				$OSVersion = "22H2"
-			}
-			"22000" {
-				$OSVersion = "21H2"
-			}
-			"19045" {
-				$OSVersion = "22H2"
-			}
-			"19044" {
-				$OSVersion = "21H2"
-			}
-			"19043" {
-				$OSVersion = "21H1"
-			}
-			"19042" {
-				$OSVersion = "20H2"
-			}
-			"19041" {
-				$OSVersion = 2004
-			}
-			"18363" {
-				$OSVersion = 1909
-			}
-			"18362" {
-				$OSVersion = 1903
-			}
-			"17763" {
-				$OSVersion = 1809
-			}
-			"17134" {
-				$OSVersion = 1803
-			}
-			"16299" {
-				$OSVersion = 1709
-			}
-			"15063" {
-				$OSVersion = 1703
-			}
-			"14393" {
-				$OSVersion = 1607
-			}
-			default {
-				Write-CMLogEntry -Value " - Unable to translate OS version using input object: $($InputObject)" -Severity 3
-				Write-CMLogEntry -Value " - Unsupported OS version detected, please reach out to the developers of this script" -Severity 3
-
-				# Throw terminating error
-				$ErrorRecord = New-TerminatingErrorRecord -Message ([string]::Empty)
-				$PSCmdlet.ThrowTerminatingError($ErrorRecord)
-			}
+		# Reads the version codename (e.g. "25H2", "24H2") directly from the Windows
+		# registry. Windows sets DisplayVersion since 20H2 / Win11 21H2 and updates it
+		# automatically with every feature update, so no hardcoded build table is needed.
+		$RegBase = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+		$DisplayVersion = (Get-ItemProperty -Path $RegBase -Name DisplayVersion -ErrorAction SilentlyContinue).DisplayVersion
+		if (-not [string]::IsNullOrEmpty($DisplayVersion)) {
+			Write-CMLogEntry -Value " - Detected OS version from registry DisplayVersion: $($DisplayVersion)" -Severity 1
+			return $DisplayVersion
 		}
-
-		# Handle return value from function
-		return $OSVersion
+		# Pre-20H2 Windows 10 used a numeric ReleaseId (e.g. "1909", "2004")
+		$ReleaseId = (Get-ItemProperty -Path $RegBase -Name ReleaseId -ErrorAction SilentlyContinue).ReleaseId
+		if (-not [string]::IsNullOrEmpty($ReleaseId)) {
+			Write-CMLogEntry -Value " - Detected OS version from registry ReleaseId: $($ReleaseId)" -Severity 1
+			return $ReleaseId
+		}
+		Write-CMLogEntry -Value " - Unable to read OS version from registry. Neither DisplayVersion nor ReleaseId is present." -Severity 3
+		$ErrorRecord = New-TerminatingErrorRecord -Message ([string]::Empty)
+		$PSCmdlet.ThrowTerminatingError($ErrorRecord)
 	}
 
 	function Get-OSName {
-		param (
-			[parameter(Mandatory = $true, HelpMessage = "OS version data to be translated to an OS name.")]
-			[ValidateNotNullOrEmpty()]
-			[string]$InputObject
+		# Reads the OS product name directly from the Windows registry (e.g. "Windows 10 Pro",
+		# "Windows 11 Pro"). This is maintained by Windows itself and needs no hardcoded thresholds.
+		$ProductName = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -Name ProductName -ErrorAction SilentlyContinue).ProductName
+		if ($ProductName -match "Windows 11") {
+			return "Windows 11"
+		}
+		return "Windows 10"
+	}
+
+	function Resolve-OSName {
+		param(
+			[parameter(Mandatory = $true)]
+			[string]$TargetOSVersion,
+			[parameter(Mandatory = $false)]
+			[string]$TargetOSName
 		)
-		switch (([System.Version]$InputObject).Build) {
-			{ $_ -ge 22000 } {
-				return "Windows 11"
-			}
-			default {
+		# If the caller passed an explicit OS name (e.g. -TargetOSName "Windows 11"), use it.
+		if (-not [string]::IsNullOrEmpty($TargetOSName)) {
+			return $TargetOSName
+		}
+		# Windows 10 ended at 22H2; every codename release after that is Windows 11.
+		# Rather than maintain a lookup table, try the task sequence environment first,
+		# then derive from the version string's year component.
+		try {
+			$TSEnv = New-Object -ComObject "Microsoft.SMS.TSEnvironment" -ErrorAction Stop
+			$OSProductName = $TSEnv.Value("OSProductName")
+			if (-not [string]::IsNullOrEmpty($OSProductName)) {
+				if ($OSProductName -match "Windows 11") { return "Windows 11" }
 				return "Windows 10"
 			}
+		} catch {
+			# Not running inside a task sequence - fall through to version-string inference
 		}
+		# Codename format: XYH(N) where XY is a two-digit year.
+		# Windows 10 shipped its final codename release as "22H2"; all subsequent codename
+		# releases belong to Windows 11. Numeric versions (1607-2004) are always Windows 10.
+		if ($TargetOSVersion -match "^(\d{2})H(\d+)$") {
+			$Year = [int]$Matches[1]
+			$Half = [int]$Matches[2]
+			# Ordinal of Win10's last release (22H2) = 22*10+2 = 222
+			$Win10LastOrdinal = 222
+			$VersionOrdinal   = $Year * 10 + $Half
+			# Any release newer than Win10 22H2 is Windows 11
+			if ($VersionOrdinal -ge $Win10LastOrdinal) {
+				return "Windows 11"
+			}
+		}
+		return "Windows 10"
 	}
-	
+
 	function Get-OSArchitecture {
 		param (
 			[parameter(Mandatory = $true, HelpMessage = "OS architecture data to be translated.")]
@@ -1491,17 +1482,25 @@ Process {
 			[bool]$OSVersionFallback = $false			
 		)
 
-		# Map version strings to ordinal values so Windows 10 and Windows 11 codename
-		# versions (e.g. "25H2", "24H2") can be compared with numeric versions (e.g. "2004").
-		$OSVersionOrdinals = @{
-			"1607" = 1;  "1703" = 2;  "1709" = 3;  "1803" = 4;  "1809" = 5
-			"1903" = 6;  "1909" = 7;  "2004" = 8;  "20H2" = 9;  "21H1" = 10
-			"21H2" = 11; "22H2" = 12; "23H2" = 13; "24H2" = 14; "25H2" = 15
+		# Convert a version string to a comparable integer without any hardcoded lookup table.
+		# Codename format "25H2" -> year * 10 + half = 252; "24H2" -> 242; "23H2" -> 232.
+		# Numeric format "2004", "1909" etc. is used directly as an integer.
+		# This formula naturally orders every past and future Windows release correctly
+		# without needing any code changes when new versions ship.
+		function ConvertTo-OSVersionOrdinal {
+			param([string]$Version)
+			if ($Version -match "^(\d{2})H(\d+)$") {
+				return [int]$Matches[1] * 10 + [int]$Matches[2]
+			}
+			if ($Version -match "^\d+$") {
+				return [int]$Version
+			}
+			return 0
 		}
 
 		if ($OSVersionFallback -eq $true) {
-			$InputOrdinal  = if ($OSVersionOrdinals.ContainsKey($DriverPackageInput))      { $OSVersionOrdinals[$DriverPackageInput] }      else { [int]$DriverPackageInput }
-			$TargetOrdinal = if ($OSVersionOrdinals.ContainsKey($OSImageData.Version)) { $OSVersionOrdinals[$OSImageData.Version] } else { [int]$OSImageData.Version }
+			$InputOrdinal  = ConvertTo-OSVersionOrdinal -Version $DriverPackageInput
+			$TargetOrdinal = ConvertTo-OSVersionOrdinal -Version $OSImageData.Version
 			if ($InputOrdinal -lt $TargetOrdinal) {
 				# OS version match found where driver package input was less than input from OSImageData version
 				Write-CMLogEntry -Value " - Matched operating system version: $($DriverPackageInput)" -Severity 1

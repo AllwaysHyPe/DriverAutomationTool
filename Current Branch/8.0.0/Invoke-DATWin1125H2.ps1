@@ -61,8 +61,8 @@ param
 	[Parameter(Mandatory = $false, HelpMessage = "Lenovo model name as it appears in the Lenovo driver catalog, e.g. 'ThinkPad T14 Gen 5'. Use -ListModels to see available names.")]
 	[string]$Model,
 
-	[Parameter(Mandatory = $false, HelpMessage = "Target OS version. Defaults to 'Windows 11 25H2'.")]
-	[ValidateSet('Windows 11 25H2', 'Windows 11 24H2', 'Windows 11 23H2', 'Windows 11 22H2')]
+	[Parameter(Mandatory = $false, HelpMessage = "Target OS version string as it appears in the Lenovo catalog, e.g. 'Windows 11 25H2'. Defaults to 'Windows 11 25H2'. No version list is hardcoded; pass any value the catalog supports.")]
+	[ValidateNotNullOrEmpty()]
 	[string]$OS = "Windows 11 25H2",
 
 	[Parameter(Mandatory = $false, HelpMessage = "Target architecture. Defaults to x64.")]

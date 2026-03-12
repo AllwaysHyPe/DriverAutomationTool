@@ -76,6 +76,27 @@ Write-Verbose -Message "Script directory is $global:ScriptDirectory"
 [string]$global:LogDirectory = Join-Path -Path $global:ScriptDirectory -ChildPath "Logs"
 [string]$global:ToolsDirectory = Join-Path -Path $global:ScriptDirectory -ChildPath "Tools"
 
+# Windows build number lookup table - maps OS version codename to full build number string
+$global:WindowsBuildHashTable = @{
+	'25H2'       = "10.0.27842.1"
+	'24H2'       = "10.0.26100.1"
+	'23H2'       = "10.0.22631.1"
+	'22H2'       = "10.0.22621.1"
+	'Win11-25H2' = "10.0.27842.1"
+	'Win11-24H2' = "10.0.26100.1"
+	'Win11-23H2' = "10.0.22631.1"
+	'Win11-22H2' = "10.0.22621.1"
+	'Win11-21H2' = "10.0.22000.1"
+	'Win10-22H2' = "10.0.19045.1"
+	'Win10-21H2' = "10.0.19044.1"
+	'Win10-21H1' = "10.0.19043.1"
+	'Win10-20H2' = "10.0.19042.1"
+	'Win10-2004' = "10.0.19041.1"
+	'Win10-1909' = "10.0.18363.1"
+	'Win10-1903' = "10.0.18362.1"
+	'Win10-1809' = "10.0.17763.1"
+}
+
 #endregion Variables
 
 # region CoreRequirements
@@ -887,10 +908,10 @@ function Get-DATOEMDownloadLinks {
 					
 					# OS matching format
 					switch -wildcard ($OS) {
-						"Windows 11" {
+						"Windows 11*" {
 							$WindowsVersion = "Windows11"
 						}
-						"Windows 10" {
+						"Windows 10*" {
 							$WindowsVersion = "Windows10"
 						}
 					}
@@ -952,10 +973,10 @@ function Get-DATOEMDownloadLinks {
 					
 					# OS matching format
 					switch -wildcard ($OS) {
-						"Windows 11" {
+						"Windows 11*" {
 							$WindowsVersion = "Windows11"
 						}
-						"Windows 10" {
+						"Windows 10*" {
 							$WindowsVersion = "Windows10"
 						}
 					}
